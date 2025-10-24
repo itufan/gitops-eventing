@@ -83,10 +83,6 @@ spec:
         repoURL: 'https://github.com/itufan/gitops-eventing.git'
         targetRevision: main
         path: '{{.path}}'
-        {{- if .file }}
-        directory:
-          include: '{{.file}}'
-        {{- end }}
 
       destination:
         server: https://kubernetes.default.svc
