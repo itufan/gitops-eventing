@@ -20,16 +20,12 @@ spec:
     - 'https://github.com/itufan/gitops-eventing.git'
     - 'https://quay.io/strimzi-helm/*'
     - 'oci://quay.io/strimzi-helm/*'
+    - 'https://github.com/knative/operator'
+    - 'https://github.com/knative-extensions/eventing-kafka-broker'
 
   # Destination clusters and namespaces
   destinations:
-    - namespace: 'eventing'
-      server: 'https://kubernetes.default.svc'
-    - namespace: 'knative-eventing'
-      server: 'https://kubernetes.default.svc'
-    - namespace: 'knative-operator'
-      server: 'https://kubernetes.default.svc'
-    - namespace: 'strimzi-system'
+    - namespace: '*'
       server: 'https://kubernetes.default.svc'
 
   # Cluster resource whitelist
