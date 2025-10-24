@@ -39,9 +39,10 @@ The event-driven platform with Knative Eventing and **Bitnami Kafka** has been s
 ### 5. Configurations
 - **Kafka cluster**: 3 KRaft controllers (combined mode), 10GB each, no TLS
 - **Bitnami Legacy Registry**: Using docker.io/bitnamilegacy for image availability
+- **Node Distribution**: 3 separate nodes (optimal HA with hard anti-affinity)
 - Node affinity: Falkenstein workers (smart placement)
 - Network policies: Cluster-internal only
-- High availability: Replication factor 3, Min ISR 2
+- High availability: Replication factor 3, Min ISR 2, Hard pod anti-affinity
 - CloudEvents v1.0 compliant
 - **Metrics**: Disabled (JMX exporter unavailable in legacy images)
 
@@ -52,6 +53,10 @@ The event-driven platform with Knative Eventing and **Bitnami Kafka** has been s
 - **Deployment**: Bitnami Kafka Helm Chart (v30.1.8)
 - **Mode**: KRaft (no ZooKeeper)
 - **Pods**: 3/3 controller pods running
+- **Distribution**: ✅ **Each pod on separate node (optimal HA)**
+  - controller-0 → orderlust-workers-general-fsn1-wpy (applications)
+  - controller-1 → orderlust-workers-general-fsn1-dkk (gitops-observability)
+  - controller-2 → orderlust-workers-general-fsn1-jbz (data-services)
 - **Services**:
   - `eventing-kafka-bitnami.kafka.svc.cluster.local:9092` (ClusterIP)
   - `eventing-kafka-bitnami-controller-headless.kafka.svc.cluster.local:9092` (Headless)
@@ -115,6 +120,7 @@ The deployment switched from Strimzi Operator to Bitnami Kafka Helm chart for se
 2. **Proven Stability**: Bitnami Kafka is widely used and well-tested
 3. **Easier Management**: Helm-based lifecycle instead of CRD-based operator
 4. **Image Availability**: Resolved image pull issues by using bitnamilegacy registry
+5. **Optimal HA**: Hard pod anti-affinity ensures each pod on separate node
 
 ### Key Differences from Original Design
 

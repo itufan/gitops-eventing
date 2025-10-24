@@ -67,14 +67,12 @@ controller:
                 values:
                   - falkenstein
     podAntiAffinity:
-      preferredDuringSchedulingIgnoredDuringExecution:
-        - weight: 100
-          podAffinityTerm:
-            labelSelector:
-              matchLabels:
-                app.kubernetes.io/name: kafka
-                app.kubernetes.io/component: controller
-            topologyKey: kubernetes.io/hostname
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: kafka
+              app.kubernetes.io/component: controller-eligible
+          topologyKey: kubernetes.io/hostname
 
 ## Broker Configuration
 # In KRaft mode, controllers also act as brokers
