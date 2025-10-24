@@ -1,6 +1,10 @@
 # Kubernetes secrets (never commit)
+# But allow ClusterSecretStore and SecretStore CRs
 *-secret.yaml
-*secret*.yaml
+secret-*.yaml
+**/secrets/*.yaml
+!clustersecretstore.yaml
+!secretstore.yaml
 
 # Terraform state
 *.tfstate
