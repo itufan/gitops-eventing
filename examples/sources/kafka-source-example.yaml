@@ -1,0 +1,129 @@
+---
+# Example: KafkaSource
+# Consumes events from Kafka topics and converts them to CloudEvents
+# This is useful for integrating external Kafka producers with Knative Eventing
+apiVersion: sources.knative.dev/v1beta1
+kind: KafkaSource
+metadata:
+  name: orders-kafka-source
+  namespace: default
+  labels:
+    app.kubernetes.io/name: orders-kafka-source
+    app.kubernetes.io/component: event-source
+spec:
+  # Kafka configuration
+  bootstrapServers:
+    - event-cluster-kafka-bootstrap.eventing.svc.cluster.local:9092
+
+  # Topics to consume from
+  topics:
+    - orders
+    - payments
+    - shipments
+
+  # Consumer group
+  consumerGroup: knative-eventing-orders
+
+  # CloudEvents configuration
+  # How to map Kafka messages to CloudEvents
+  cloudEventOverrides:
+    extensions:
+      # Add custom CloudEvents attributes
+      kafka-source: orders-service
+
+  # Delivery target (broker or service)
+  sink:
+    ref:
+      apiVersion: eventing.knative.dev/v1
+      kind: Broker
+      name: default
+      namespace: knative-eventing
+
+  # Resources
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+---
+# Example: KafkaSource with authentication
+# For Kafka clusters requiring authentication
+apiVersion: sources.knative.dev/v1beta1
+kind: KafkaSource
+metadata:
+  name: secure-kafka-source
+  namespace: default
+spec:
+  bootstrapServers:
+    - external-kafka-cluster:9093
+
+  topics:
+    - external-events
+
+  consumerGroup: knative-external-events
+
+  # Authentication (if external Kafka requires it)
+  # net:
+  #   sasl:
+  #     enable: true
+  #     user:
+  #       secretKeyRef:
+  #         name: kafka-credentials
+  #         key: username
+  #     password:
+  #       secretKeyRef:
+  #         name: kafka-credentials
+  #         key: password
+  #     type:
+  #       secretKeyRef:
+  #         name: kafka-credentials
+  #         key: saslType  # PLAIN, SCRAM-SHA-256, SCRAM-SHA-512
+  #   tls:
+  #     enable: true
+  #     caCert:
+  #       secretKeyRef:
+  #         name: kafka-credentials
+  #         key: ca.crt
+
+  sink:
+    ref:
+      apiVersion: eventing.knative.dev/v1
+      kind: Broker
+      name: default
+      namespace: knative-eventing
+
+---
+# Example: Direct KafkaSource to Service (bypassing broker)
+apiVersion: sources.knative.dev/v1beta1
+kind: KafkaSource
+metadata:
+  name: direct-kafka-source
+  namespace: default
+spec:
+  bootstrapServers:
+    - event-cluster-kafka-bootstrap.eventing.svc.cluster.local:9092
+
+  topics:
+    - notifications
+
+  consumerGroup: notifications-consumer
+
+  # Direct delivery to service
+  sink:
+    ref:
+      apiVersion: v1
+      kind: Service
+      name: notification-handler
+      namespace: default
+    uri: /api/notifications
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi

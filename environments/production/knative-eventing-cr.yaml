@@ -1,0 +1,180 @@
+---
+# KnativeEventing Custom Resource
+# Deploys Knative Eventing without Serving
+# Enables Kafka source for event ingestion
+apiVersion: operator.knative.dev/v1beta1
+kind: KnativeEventing
+metadata:
+  name: knative-eventing
+  namespace: knative-eventing
+  labels:
+    app.kubernetes.io/name: knative-eventing
+    app.kubernetes.io/component: eventing
+    app.kubernetes.io/part-of: event-driven-platform
+spec:
+  # Version to install
+  version: "1.15.0"
+
+  # High availability configuration
+  high-availability:
+    replicas: 2
+
+  # Workload overrides for node placement
+  workloads:
+  - name: eventing-controller
+    replicas: 2
+    resources:
+    - container: eventing-controller
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    affinity:
+      nodeAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+            - key: location
+              operator: In
+              values:
+              - falkenstein
+            - key: workload
+              operator: NotIn
+              values:
+              - gitops-observability
+        - weight: 50
+          preference:
+            matchExpressions:
+            - key: location
+              operator: In
+              values:
+              - falkenstein
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app: eventing-controller
+            topologyKey: kubernetes.io/hostname
+
+  - name: eventing-webhook
+    replicas: 2
+    resources:
+    - container: eventing-webhook
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    affinity:
+      nodeAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+            - key: location
+              operator: In
+              values:
+              - falkenstein
+            - key: workload
+              operator: NotIn
+              values:
+              - gitops-observability
+        - weight: 50
+          preference:
+            matchExpressions:
+            - key: location
+              operator: In
+              values:
+              - falkenstein
+
+  - name: imc-controller
+    replicas: 1
+    resources:
+    - container: controller
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    affinity:
+      nodeAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+            - key: location
+              operator: In
+              values:
+              - falkenstein
+            - key: workload
+              operator: NotIn
+              values:
+              - gitops-observability
+        - weight: 50
+          preference:
+            matchExpressions:
+            - key: location
+              operator: In
+              values:
+              - falkenstein
+
+  # Source configuration - enable Kafka source
+  source:
+    kafka:
+      enabled: true
+
+  # Configuration
+  config:
+    # Default broker configuration
+    br-default-channel:
+      channelTemplateSpec: |
+        apiVersion: messaging.knative.dev/v1
+        kind: InMemoryChannel
+
+    # Broker defaults
+    br-defaults:
+      default-br-config: |
+        clusterDefault:
+          brokerClass: Kafka
+          apiVersion: v1
+          kind: ConfigMap
+          name: kafka-broker-config
+          namespace: knative-eventing
+
+    # Features configuration
+    features:
+      # Enable delivery timeout
+      delivery-timeout: enabled
+      # Enable new trigger filters
+      new-trigger-filters: enabled
+
+    # Leader election configuration
+    config-leader-election:
+      lease-duration: "60s"
+      renew-deadline: "40s"
+      retry-period: "10s"
+
+    # Logging configuration
+    config-logging:
+      loglevel.controller: "info"
+      loglevel.webhook: "info"
+      zap-logger-config: |
+        {
+          "level": "info",
+          "development": false,
+          "outputPaths": ["stdout"],
+          "errorOutputPaths": ["stderr"],
+          "encoding": "json"
+        }
+
+  # Additional manifests for customization
+  # This will be applied after the base installation
+  additionalManifests:
+  - URL: ""  # Can add additional manifests if needed

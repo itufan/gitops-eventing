@@ -1,0 +1,85 @@
+---
+# Example: Event Trigger with CloudEvents Filters
+# Triggers subscribe to specific events from a broker and route them to a service
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: order-created-trigger
+  namespace: default  # Same namespace as your broker
+  labels:
+    app.kubernetes.io/name: order-created-trigger
+    app.kubernetes.io/component: trigger
+spec:
+  # Broker to subscribe to
+  broker: default  # Use "default" broker in knative-eventing namespace
+
+  # CloudEvents filters
+  filter:
+    attributes:
+      # Filter by event type
+      type: com.example.order.created
+      # Optional: Filter by source
+      # source: orders-service
+      # Optional: Filter by any CloudEvents attribute
+      # subject: "/orders/123"
+
+  # Destination service
+  subscriber:
+    ref:
+      apiVersion: v1
+      kind: Service
+      name: order-processor
+      namespace: default
+    # Optional: specific URI path
+    # uri: /webhooks/orders
+
+  # Delivery configuration (overrides broker defaults)
+  delivery:
+    retry: 5
+    backoffPolicy: exponential
+    backoffDelay: PT1S
+
+---
+# Example: Multiple filters trigger
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: payment-events-trigger
+  namespace: default
+  labels:
+    app.kubernetes.io/name: payment-events-trigger
+spec:
+  broker: default
+
+  # Multiple attribute filters (AND logic)
+  filter:
+    attributes:
+      type: com.example.payment.processed
+      source: payment-service
+
+  subscriber:
+    ref:
+      apiVersion: v1
+      kind: Service
+      name: invoice-generator
+      namespace: default
+
+---
+# Example: Catch-all trigger (no filters)
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: audit-log-trigger
+  namespace: default
+  labels:
+    app.kubernetes.io/name: audit-log-trigger
+spec:
+  broker: default
+
+  # No filter - receives all events
+  subscriber:
+    ref:
+      apiVersion: v1
+      kind: Service
+      name: audit-service
+      namespace: default

@@ -1,0 +1,104 @@
+---
+# Example: Simple Event Consumer Service
+# This demonstrates how to create a service that receives CloudEvents from triggers
+apiVersion: v1
+kind: Service
+metadata:
+  name: event-display
+  namespace: default
+  labels:
+    app.kubernetes.io/name: event-display
+    app.kubernetes.io/component: consumer
+spec:
+  selector:
+    app: event-display
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+    protocol: TCP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: event-display
+  namespace: default
+  labels:
+    app: event-display
+    app.kubernetes.io/name: event-display
+    app.kubernetes.io/component: consumer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: event-display
+  template:
+    metadata:
+      labels:
+        app: event-display
+    spec:
+      containers:
+      - name: event-display
+        image: gcr.io/knative-releases/knative.dev/eventing/cmd/event_display:latest
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        resources:
+          requests:
+            cpu: 100m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+
+---
+# Trigger to send events to this service
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: display-all-events
+  namespace: default
+  labels:
+    app.kubernetes.io/name: display-all-events
+spec:
+  broker: default
+
+  # No filter - receives all events (useful for debugging)
+  subscriber:
+    ref:
+      apiVersion: v1
+      kind: Service
+      name: event-display
+      namespace: default
+
+---
+# To test:
+# 1. Deploy this service: kubectl apply -f event-consumer-service.yaml
+# 2. Send test events using the send-event.sh script
+# 3. View received events: kubectl logs -n default -l app=event-display -f
+#
+# Expected log output:
+# ☁️  cloudevents.Event
+# Context Attributes,
+#   specversion: 1.0
+#   type: com.example.test.event
+#   source: test-script
+#   id: a234-5678-91011
+#   time: 2025-10-24T12:00:00Z
+#   datacontenttype: application/json
+# Data,
+#   {
+#     "message": "Hello from test script",
+#     "timestamp": "2025-10-24T12:00:00Z"
+#   }

@@ -1,0 +1,60 @@
+# Strimzi Kafka Operator Helm Values
+# Version: 0.48.0
+# Deploys on Falkenstein workers (preferred: without gitops-observability label)
+
+# Operator configuration
+replicas: 1
+
+watchNamespaces: ["eventing"]
+watchAnyNamespace: false
+
+# Resource limits for operator
+resources:
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Node affinity - prefer Falkenstein workers without gitops-observability
+affinity:
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      preference:
+        matchExpressions:
+        - key: location
+          operator: In
+          values:
+          - falkenstein
+        - key: workload
+          operator: NotIn
+          values:
+          - gitops-observability
+    - weight: 50
+      preference:
+        matchExpressions:
+        - key: location
+          operator: In
+          values:
+          - falkenstein
+
+# Image configuration
+image:
+  registry: quay.io
+  repository: strimzi
+  name: operator
+  tag: 0.48.0
+
+# Log level
+logLevel: INFO
+
+# Feature gates
+featureGates: "+UseKRaft,+KafkaNodePools"
+
+# Generate network policies
+generateNetworkPolicy: true
+
+# Service account
+createGlobalResources: true

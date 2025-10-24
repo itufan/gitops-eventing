@@ -1,0 +1,162 @@
+---
+# Knative Kafka Broker Controller
+# Manages Kafka-based brokers in the cluster
+# This resource will be applied after Knative Eventing is installed
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: knative-eventing
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: config-kafka-broker-data-plane
+  namespace: knative-eventing
+  labels:
+    app.kubernetes.io/name: knative-kafka-broker
+    app.kubernetes.io/component: data-plane-config
+data:
+  # Data plane configuration
+  config-kafka-broker-data-plane.yaml: |
+    receivers:
+      - port: 8080
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+
+    dispatchers:
+      - resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+
+---
+# Default Kafka Broker for cluster-wide eventing
+# This broker is available to all namespaces
+apiVersion: eventing.knative.dev/v1
+kind: Broker
+metadata:
+  name: default
+  namespace: knative-eventing
+  annotations:
+    eventing.knative.dev/broker.class: Kafka
+  labels:
+    app.kubernetes.io/name: kafka-broker
+    app.kubernetes.io/component: broker
+    app.kubernetes.io/part-of: event-driven-platform
+spec:
+  # Reference to Kafka broker configuration
+  config:
+    apiVersion: v1
+    kind: ConfigMap
+    name: kafka-broker-config
+    namespace: knative-eventing
+
+  # Delivery configuration
+  delivery:
+    # Retry configuration for failed deliveries
+    retry: 5
+    backoffPolicy: exponential
+    backoffDelay: PT1S  # 1 second initial delay
+
+    # Dead letter sink for events that fail after all retries
+    deadLetterSink:
+      ref:
+        apiVersion: v1
+        kind: Service
+        name: event-dead-letter-sink
+        namespace: knative-eventing
+
+---
+# Dead Letter Sink Service
+# Collects events that failed delivery after retries
+apiVersion: v1
+kind: Service
+metadata:
+  name: event-dead-letter-sink
+  namespace: knative-eventing
+  labels:
+    app.kubernetes.io/name: dead-letter-sink
+    app.kubernetes.io/component: error-handler
+spec:
+  selector:
+    app: event-dead-letter-sink
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+    protocol: TCP
+
+---
+# Dead Letter Sink Deployment
+# Simple HTTP server to log failed events
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: event-dead-letter-sink
+  namespace: knative-eventing
+  labels:
+    app: event-dead-letter-sink
+    app.kubernetes.io/name: dead-letter-sink
+    app.kubernetes.io/component: error-handler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: event-dead-letter-sink
+  template:
+    metadata:
+      labels:
+        app: event-dead-letter-sink
+    spec:
+      containers:
+      - name: sink
+        image: gcr.io/knative-releases/knative.dev/eventing/cmd/event_display:latest
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+              - key: location
+                operator: In
+                values:
+                - falkenstein
+              - key: workload
+                operator: NotIn
+                values:
+                - gitops-observability
+          - weight: 50
+            preference:
+              matchExpressions:
+              - key: location
+                operator: In
+                values:
+                - falkenstein

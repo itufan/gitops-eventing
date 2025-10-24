@@ -1,0 +1,200 @@
+---
+# ArgoCD ApplicationSet for Event-Driven Platform
+# Deploys all components in the correct order using sync waves
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: eventing-platform
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: eventing-platform
+    app.kubernetes.io/component: gitops
+    app.kubernetes.io/part-of: event-driven-platform
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+
+  generators:
+    - list:
+        elements:
+          # Wave 0: Infrastructure - Namespaces
+          - name: eventing-namespaces
+            namespace: argocd
+            path: infrastructure
+            syncWave: "0"
+            description: "Namespaces for eventing platform"
+
+          # Wave 1: Operators
+          - name: strimzi-operator
+            namespace: strimzi-system
+            chart: strimzi-kafka-operator
+            repo: oci://quay.io/strimzi-helm/strimzi-kafka-operator
+            version: "0.48.0"
+            valuesFile: environments/production/strimzi-values.yaml
+            syncWave: "1"
+            description: "Strimzi Kafka Operator"
+
+          - name: knative-operator
+            namespace: knative-operator
+            path: infrastructure/knative-operator
+            syncWave: "1"
+            description: "Knative Operator for eventing"
+            installURL: "https://github.com/knative/operator/releases/download/knative-v1.19.4/operator.yaml"
+
+          # Wave 2: Kafka Cluster
+          - name: kafka-cluster
+            namespace: eventing
+            path: environments/production
+            file: kafka-cluster.yaml
+            syncWave: "2"
+            description: "Kafka cluster with 3 brokers"
+
+          # Wave 3: Knative Eventing
+          - name: knative-eventing
+            namespace: knative-eventing
+            path: environments/production
+            file: knative-eventing-cr.yaml
+            syncWave: "3"
+            description: "Knative Eventing CR"
+
+          - name: kafka-broker-config
+            namespace: knative-eventing
+            path: environments/production
+            file: kafka-broker-config.yaml
+            syncWave: "3"
+            description: "Kafka broker configuration"
+
+          # Wave 4: Kafka Broker Integration
+          - name: kafka-broker-controller
+            namespace: knative-eventing
+            syncWave: "4"
+            description: "Knative Kafka Broker controller"
+            installURL: "https://github.com/knative-extensions/eventing-kafka-broker/releases/download/knative-v1.19.7/eventing-kafka-controller.yaml"
+
+          - name: kafka-broker-dataplane
+            namespace: knative-eventing
+            syncWave: "4"
+            description: "Knative Kafka Broker data plane"
+            installURL: "https://github.com/knative-extensions/eventing-kafka-broker/releases/download/knative-v1.19.7/eventing-kafka-broker.yaml"
+
+          # Wave 5: Default Broker
+          - name: default-kafka-broker
+            namespace: knative-eventing
+            path: environments/production
+            file: kafka-broker-integration.yaml
+            syncWave: "5"
+            description: "Default Kafka broker and dead letter sink"
+
+          # Wave 6: Network Policies
+          - name: network-policies
+            namespace: eventing
+            path: environments/production
+            file: network-policies.yaml
+            syncWave: "6"
+            description: "Network policies for cluster-internal only"
+
+  template:
+    metadata:
+      name: 'eventing-{{.name}}'
+      namespace: argocd
+      labels:
+        app.kubernetes.io/name: '{{.name}}'
+        app.kubernetes.io/component: eventing
+        app.kubernetes.io/part-of: event-driven-platform
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{.syncWave}}'
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+
+    spec:
+      project: eventing
+
+      # Source configuration (handles both Helm charts and Git paths)
+      {{- if .chart }}
+      # Helm chart source
+      sources:
+        - repoURL: '{{.repo}}'
+          chart: '{{.chart}}'
+          targetRevision: '{{.version}}'
+          helm:
+            releaseName: '{{.name}}'
+            valueFiles:
+              - '$values/{{.valuesFile}}'
+        - repoURL: 'https://github.com/itufan/gitops-eventing.git'
+          targetRevision: main
+          ref: values
+      {{- else if .installURL }}
+      # External manifest URL
+      source:
+        repoURL: 'https://github.com/itufan/gitops-eventing.git'
+        targetRevision: main
+        path: infrastructure
+        directory:
+          exclude: '*'
+      {{- else if .file }}
+      # Single file from Git
+      source:
+        repoURL: 'https://github.com/itufan/gitops-eventing.git'
+        targetRevision: main
+        path: '{{.path}}'
+        directory:
+          include: '{{.file}}'
+      {{- else }}
+      # Directory from Git
+      source:
+        repoURL: 'https://github.com/itufan/gitops-eventing.git'
+        targetRevision: main
+        path: '{{.path}}'
+      {{- end }}
+
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.namespace}}'
+
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+          allowEmpty: false
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+          - ApplyOutOfSyncOnly=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 5m
+
+      # Ignore differences in dynamic fields
+      ignoreDifferences:
+        - group: apps
+          kind: StatefulSet
+          jsonPointers:
+            - /spec/volumeClaimTemplates
+            - /spec/replicas
+        - group: apps
+          kind: Deployment
+          jsonPointers:
+            - /spec/replicas
+        - group: ''
+          kind: Secret
+          jsonPointers:
+            - /data
+        - group: apiextensions.k8s.io
+          kind: CustomResourceDefinition
+          jsonPointers:
+            - /status
+
+      # Health check configuration
+      {{- if .installURL }}
+      # For external manifest applications, add post-sync hook
+      syncPolicy:
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+        managedNamespaceMetadata:
+          labels:
+            argocd.argoproj.io/managed-by: argocd
+      {{- end }}

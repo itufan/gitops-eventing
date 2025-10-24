@@ -1,0 +1,11 @@
+---
+# Note: External Secrets Operator should already be installed cluster-wide
+# This file defines namespace for eventing-specific secrets if needed
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: eventing
+  labels:
+    app.kubernetes.io/name: eventing
+    app.kubernetes.io/component: event-infrastructure
+    app.kubernetes.io/part-of: event-driven-platform

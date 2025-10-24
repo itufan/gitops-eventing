@@ -1,0 +1,9 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: strimzi-system
+  labels:
+    app.kubernetes.io/name: strimzi
+    app.kubernetes.io/component: operator
+    app.kubernetes.io/part-of: event-driven-platform

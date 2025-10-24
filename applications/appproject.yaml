@@ -1,0 +1,95 @@
+---
+# ArgoCD AppProject for Event-Driven Platform
+# Defines permissions and restrictions for eventing applications
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: eventing
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: eventing
+    app.kubernetes.io/component: gitops
+    app.kubernetes.io/part-of: event-driven-platform
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Event-driven platform with Knative Eventing and Kafka
+
+  # Source repositories
+  sourceRepos:
+    - 'https://github.com/itufan/gitops-eventing.git'
+    - 'https://quay.io/strimzi-helm/*'
+    - 'oci://quay.io/strimzi-helm/*'
+
+  # Destination clusters and namespaces
+  destinations:
+    - namespace: 'eventing'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'knative-eventing'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'knative-operator'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'strimzi-system'
+      server: 'https://kubernetes.default.svc'
+
+  # Cluster resource whitelist
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+    - group: 'apiextensions.k8s.io'
+      kind: CustomResourceDefinition
+    - group: 'admissionregistration.k8s.io'
+      kind: MutatingWebhookConfiguration
+    - group: 'admissionregistration.k8s.io'
+      kind: ValidatingWebhookConfiguration
+    - group: 'rbac.authorization.k8s.io'
+      kind: ClusterRole
+    - group: 'rbac.authorization.k8s.io'
+      kind: ClusterRoleBinding
+    - group: 'external-secrets.io'
+      kind: ClusterSecretStore
+
+  # Namespace resource whitelist (all resources allowed in project namespaces)
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+
+  # Orphaned resources - monitoring
+  orphanedResources:
+    warn: true
+    ignore:
+      - group: ''
+        kind: Secret
+        name: '*-token-*'
+      - group: ''
+        kind: ConfigMap
+        name: 'kube-root-ca.crt'
+
+  # Sync windows - allow syncing at any time
+  syncWindows:
+    - kind: allow
+      schedule: '* * * * *'
+      duration: 24h
+      applications:
+        - '*'
+      manualSync: true
+
+  # Role definitions for project
+  roles:
+    - name: admin
+      description: Admin role for event-driven platform
+      policies:
+        - p, proj:eventing:admin, applications, *, eventing/*, allow
+        - p, proj:eventing:admin, repositories, *, eventing/*, allow
+      groups:
+        - cluster-admin
+        - platform-admin
+
+    - name: readonly
+      description: Read-only access to eventing applications
+      policies:
+        - p, proj:eventing:readonly, applications, get, eventing/*, allow
+        - p, proj:eventing:readonly, applications, list, eventing/*, allow
+      groups:
+        - developers
+        - viewers

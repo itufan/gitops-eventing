@@ -1,0 +1,51 @@
+# Common Node Affinity Configuration
+# Reusable affinity rules for all eventing components
+#
+# Strategy:
+# - Prefer Falkenstein workers WITHOUT workload=gitops-observability (weight: 100)
+#   - orderlust-workers-general-fsn1-jbz (workload=data-services)
+#   - orderlust-workers-general-fsn1-wpy (workload=applications)
+# - Fallback to Falkenstein workers WITH workload=gitops-observability (weight: 50)
+#   - orderlust-workers-general-fsn1-dkk
+#   - orderlust-workers-general-fsn1-fbm
+#   - orderlust-workers-general-fsn1-grq
+#
+# This ensures minimum 3 workers available for HA while preferring dedicated nodes
+
+affinity:
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    # Primary: Falkenstein workers without gitops-observability
+    - weight: 100
+      preference:
+        matchExpressions:
+        - key: location
+          operator: In
+          values:
+          - falkenstein
+        - key: workload
+          operator: NotIn
+          values:
+          - gitops-observability
+
+    # Fallback: Any Falkenstein worker
+    - weight: 50
+      preference:
+        matchExpressions:
+        - key: location
+          operator: In
+          values:
+          - falkenstein
+
+  # Pod anti-affinity to spread replicas across nodes
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/part-of
+            operator: In
+            values:
+            - event-driven-platform
+        topologyKey: kubernetes.io/hostname

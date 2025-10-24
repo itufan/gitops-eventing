@@ -1,0 +1,111 @@
+---
+# Kafka Broker Configuration
+# ConfigMap referenced by Knative Kafka Broker
+# Configures connection to Kafka cluster and default settings
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-broker-config
+  namespace: knative-eventing
+  labels:
+    app.kubernetes.io/name: kafka-broker-config
+    app.kubernetes.io/component: broker-config
+    app.kubernetes.io/part-of: event-driven-platform
+data:
+  # Kafka bootstrap servers (cluster-internal)
+  bootstrap.servers: "event-cluster-kafka-bootstrap.eventing.svc.cluster.local:9092"
+
+  # Default number of topic partitions
+  default.topic.partitions: "10"
+
+  # Default replication factor (must not exceed broker count)
+  default.topic.replication.factor: "3"
+
+  # Topic configuration
+  # Retention: 7 days (matches Kafka cluster config)
+  default.topic.config.retention.ms: "604800000"
+
+  # Segment size: 1GB
+  default.topic.config.segment.bytes: "1073741824"
+
+  # Compression type
+  default.topic.config.compression.type: "producer"
+
+  # Min in-sync replicas
+  default.topic.config.min.insync.replicas: "2"
+
+  # Max message size: 1MB
+  default.topic.config.max.message.bytes: "1048576"
+
+---
+# Network Policy for Knative Eventing to access Kafka
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: knative-eventing-to-kafka
+  namespace: knative-eventing
+  labels:
+    app.kubernetes.io/name: knative-eventing
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: knative-eventing
+  policyTypes:
+  - Egress
+  egress:
+  # Allow access to Kafka cluster
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          app.kubernetes.io/name: eventing
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: kafka
+    ports:
+    - protocol: TCP
+      port: 9092
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+
+---
+# Network Policy for Kafka to accept connections from Knative
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kafka-from-knative-eventing
+  namespace: eventing
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kafka
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow from Knative Eventing namespace
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          app.kubernetes.io/name: knative-eventing
+    ports:
+    - protocol: TCP
+      port: 9092
+  # Allow inter-broker communication
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: kafka
+    ports:
+    - protocol: TCP
+      port: 9092
+    - protocol: TCP
+      port: 9093

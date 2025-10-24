@@ -1,0 +1,191 @@
+---
+# Kafka Cluster using Strimzi
+# 3 brokers in KRaft mode (no ZooKeeper)
+# 10GB storage per broker
+# Cluster-internal only, no TLS
+apiVersion: kafka.strimzi.io/v1beta2
+kind: Kafka
+metadata:
+  name: event-cluster
+  namespace: eventing
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: event-broker
+    app.kubernetes.io/part-of: event-driven-platform
+spec:
+  # Kafka configuration
+  kafka:
+    version: 3.9.0
+    replicas: 3
+
+    # Listeners - cluster-internal only, no TLS
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+      - name: tls
+        port: 9093
+        type: internal
+        tls: false
+
+    # Kafka configuration
+    config:
+      # Replication settings
+      default.replication.factor: 3
+      min.insync.replicas: 2
+      offsets.topic.replication.factor: 3
+      transaction.state.log.replication.factor: 3
+      transaction.state.log.min.isr: 2
+
+      # Log settings
+      log.retention.hours: 168  # 7 days
+      log.segment.bytes: 1073741824
+      log.retention.check.interval.ms: 300000
+
+      # Performance
+      num.network.threads: 3
+      num.io.threads: 8
+      socket.send.buffer.bytes: 102400
+      socket.receive.buffer.bytes: 102400
+      socket.request.max.bytes: 104857600
+
+      # Auto-create topics
+      auto.create.topics.enable: true
+
+      # Compression
+      compression.type: producer
+
+    # Storage configuration
+    storage:
+      type: persistent-claim
+      size: 10Gi
+      class: longhorn
+      deleteClaim: false
+
+    # Resources
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        cpu: 1000m
+        memory: 4Gi
+
+    # Metrics for Prometheus
+    metricsConfig:
+      type: jmxPrometheusExporter
+      valueFrom:
+        configMapKeyRef:
+          name: kafka-metrics
+          key: kafka-metrics-config.yml
+
+    # JVM options
+    jvmOptions:
+      -Xms: 1024m
+      -Xmx: 2048m
+
+    # Node affinity - 3 different Falkenstein workers
+    template:
+      pod:
+        affinity:
+          nodeAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                - key: location
+                  operator: In
+                  values:
+                  - falkenstein
+                - key: workload
+                  operator: NotIn
+                  values:
+                  - gitops-observability
+            - weight: 50
+              preference:
+                matchExpressions:
+                - key: location
+                  operator: In
+                  values:
+                  - falkenstein
+          podAntiAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                  - kafka
+              topologyKey: kubernetes.io/hostname
+
+  # Entity Operator - manages topics and users
+  entityOperator:
+    topicOperator:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+    userOperator:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+    template:
+      pod:
+        affinity:
+          nodeAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                - key: location
+                  operator: In
+                  values:
+                  - falkenstein
+                - key: workload
+                  operator: NotIn
+                  values:
+                  - gitops-observability
+            - weight: 50
+              preference:
+                matchExpressions:
+                - key: location
+                  operator: In
+                  values:
+                  - falkenstein
+
+---
+# ConfigMap for Kafka metrics
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-metrics
+  namespace: eventing
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: metrics
+data:
+  kafka-metrics-config.yml: |
+    lowercaseOutputName: true
+    rules:
+    # Special cases and very specific rules
+    - pattern: kafka.server<type=(.+), name=(.+), clientId=(.+), topic=(.+), partition=(.*)><>Value
+      name: kafka_server_$1_$2
+      type: GAUGE
+      labels:
+       clientId: "$3"
+       topic: "$4"
+       partition: "$5"
+    - pattern: kafka.server<type=(.+), name=(.+), clientId=(.+), brokerHost=(.+), brokerPort=(.+)><>Value
+      name: kafka_server_$1_$2
+      type: GAUGE
+      labels:
+       clientId: "$3"
+       broker: "$4:$5"

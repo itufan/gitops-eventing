@@ -1,0 +1,84 @@
+---
+# Example: PingSource
+# Generates CloudEvents on a schedule (like cron)
+# Useful for periodic tasks, health checks, or scheduled events
+apiVersion: sources.knative.dev/v1
+kind: PingSource
+metadata:
+  name: hourly-health-check
+  namespace: default
+  labels:
+    app.kubernetes.io/name: hourly-health-check
+    app.kubernetes.io/component: event-source
+spec:
+  # Cron schedule (every hour at minute 0)
+  schedule: "0 * * * *"
+
+  # CloudEvent type
+  contentType: "application/json"
+
+  # Event data payload
+  data: '{"type": "health-check", "timestamp": "{{ .timestamp }}"}'
+
+  # CloudEvents attributes
+  cloudEventOverrides:
+    extensions:
+      source: ping-source
+
+  # Destination
+  sink:
+    ref:
+      apiVersion: eventing.knative.dev/v1
+      kind: Broker
+      name: default
+      namespace: knative-eventing
+
+---
+# Example: Daily summary trigger
+apiVersion: sources.knative.dev/v1
+kind: PingSource
+metadata:
+  name: daily-summary
+  namespace: default
+spec:
+  # Every day at 09:00 UTC
+  schedule: "0 9 * * *"
+
+  contentType: "application/json"
+
+  data: |
+    {
+      "type": "daily-summary-request",
+      "date": "{{ .timestamp }}",
+      "requestedBy": "system"
+    }
+
+  sink:
+    ref:
+      apiVersion: v1
+      kind: Service
+      name: reporting-service
+      namespace: default
+    uri: /api/generate-summary
+
+---
+# Example: Every minute ping (testing)
+apiVersion: sources.knative.dev/v1
+kind: PingSource
+metadata:
+  name: test-ping
+  namespace: default
+spec:
+  # Every minute
+  schedule: "* * * * *"
+
+  contentType: "text/plain"
+
+  data: "ping"
+
+  sink:
+    ref:
+      apiVersion: eventing.knative.dev/v1
+      kind: Broker
+      name: default
+      namespace: knative-eventing

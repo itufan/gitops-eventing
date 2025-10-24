@@ -1,0 +1,154 @@
+---
+# Network Policies for Event-Driven Platform
+# Ensures cluster-internal only communication
+# No external ingress or egress except DNS and necessary cluster services
+
+# Policy 1: Allow ingress to Kafka brokers from cluster workloads
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kafka-cluster-ingress
+  namespace: eventing
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      strimzi.io/cluster: event-cluster
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow from any pod in the cluster (cluster-wide eventing)
+  - from:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 9092
+
+---
+# Policy 2: Knative Eventing components egress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: knative-eventing-egress
+  namespace: knative-eventing
+  labels:
+    app.kubernetes.io/name: knative-eventing
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: knative-eventing
+  policyTypes:
+  - Egress
+  egress:
+  # Allow to Kafka in eventing namespace
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          app.kubernetes.io/name: eventing
+    ports:
+    - protocol: TCP
+      port: 9092
+
+  # Allow to application workloads (event delivery)
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 80
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 8080
+
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+
+  # Allow to Kubernetes API server
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: default
+    ports:
+    - protocol: TCP
+      port: 443
+
+---
+# Policy 3: Application workloads can send events to Knative Brokers
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: apps-to-knative-broker
+  namespace: knative-eventing
+  labels:
+    app.kubernetes.io/name: knative-eventing
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      eventing.knative.dev/broker: "true"
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow from any namespace (cluster-wide broker access)
+  - from:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 80
+    - protocol: TCP
+      port: 8080
+
+---
+# Policy 4: Kafka egress (allow inter-broker and necessary cluster communication)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kafka-cluster-egress
+  namespace: eventing
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      strimzi.io/cluster: event-cluster
+  policyTypes:
+  - Egress
+  egress:
+  # Allow inter-broker communication
+  - to:
+    - podSelector:
+        matchLabels:
+          strimzi.io/cluster: event-cluster
+    ports:
+    - protocol: TCP
+      port: 9092
+    - protocol: TCP
+      port: 9093
+
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+
+  # Allow to Kubernetes API
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: default
+    ports:
+    - protocol: TCP
+      port: 443

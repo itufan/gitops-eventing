@@ -1,0 +1,35 @@
+# Kubernetes secrets (never commit)
+*-secret.yaml
+*secret*.yaml
+
+# Terraform state
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.log
+temp/
+tmp/
+
+# Backups
+*.bak
+*.backup
+
+# Personal notes
+notes.md
+TODO.md
+scratch/

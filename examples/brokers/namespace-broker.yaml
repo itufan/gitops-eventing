@@ -1,0 +1,44 @@
+---
+# Example: Namespace-specific Kafka Broker
+# This creates a broker for a specific namespace
+# Applications in this namespace can use this broker for their events
+apiVersion: eventing.knative.dev/v1
+kind: Broker
+metadata:
+  name: app-events
+  namespace: default  # Change to your application namespace
+  annotations:
+    eventing.knative.dev/broker.class: Kafka
+  labels:
+    app.kubernetes.io/name: app-events-broker
+    app.kubernetes.io/component: broker
+spec:
+  # Reference to cluster-wide Kafka broker configuration
+  config:
+    apiVersion: v1
+    kind: ConfigMap
+    name: kafka-broker-config
+    namespace: knative-eventing
+
+  # Delivery specification
+  delivery:
+    retry: 3
+    backoffPolicy: exponential
+    backoffDelay: PT2S  # 2 seconds
+
+    # Optional: Dead letter sink for failed events
+    # deadLetterSink:
+    #   ref:
+    #     apiVersion: v1
+    #     kind: Service
+    #     name: my-dead-letter-sink
+    #     namespace: default
+
+---
+# Example: How to check broker status
+# kubectl get broker app-events -n default
+# kubectl describe broker app-events -n default
+#
+# Expected output should show:
+# - URL: http://kafka-broker-ingress.knative-eventing.svc.cluster.local/default/app-events
+# - Conditions: Ready=True

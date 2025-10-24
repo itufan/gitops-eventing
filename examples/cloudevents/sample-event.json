@@ -1,0 +1,23 @@
+{
+  "specversion": "1.0",
+  "type": "com.example.order.created",
+  "source": "https://orders-service.example.com",
+  "id": "A234-1234-1234",
+  "time": "2025-10-24T12:00:00Z",
+  "datacontenttype": "application/json",
+  "subject": "/orders/12345",
+  "data": {
+    "orderId": "12345",
+    "customerId": "customer-abc",
+    "items": [
+      {
+        "productId": "prod-001",
+        "quantity": 2,
+        "price": 29.99
+      }
+    ],
+    "totalAmount": 59.98,
+    "currency": "USD",
+    "status": "pending"
+  }
+}
