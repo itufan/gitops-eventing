@@ -1,0 +1,12 @@
+# Knative Operator v1.15.2
+# Download from: https://github.com/knative/operator/releases/download/knative-v1.15.2/operator.yaml
+# This file should contain the complete operator YAML
+# For GitOps, we reference the external URL directly in ArgoCD
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: knative-operator-install
+  namespace: knative-operator
+data:
+  url: "https://github.com/knative/operator/releases/download/knative-v1.15.2/operator.yaml"
+  version: "1.15.2"
