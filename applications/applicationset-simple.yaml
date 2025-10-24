@@ -1,15 +1,14 @@
 ---
-# ArgoCD ApplicationSet for Event-Driven Platform
-# Simplified version with separate applications per component type
+# Simplified ApplicationSet for Event-Driven Platform
+# Uses direct YAML manifests for maximum compatibility
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: eventing-infrastructure
+  name: eventing-platform-simple
   namespace: argocd
   labels:
-    app.kubernetes.io/name: eventing-infrastructure
+    app.kubernetes.io/name: eventing-platform
     app.kubernetes.io/component: gitops
-    app.kubernetes.io/part-of: event-driven-platform
 spec:
   goTemplate: true
   goTemplateOptions: ["missingkey=error"]
@@ -17,48 +16,37 @@ spec:
   generators:
     - list:
         elements:
-          # Wave 0: Infrastructure
-          - name: eventing-namespaces
-            namespace: argocd
+          # Namespaces
+          - name: namespaces
             path: infrastructure
             syncWave: "0"
 
-          # Wave 1: Knative Operator namespace
-          - name: knative-operator-ns
-            namespace: knative-operator
-            path: infrastructure/knative-operator
-            syncWave: "1"
-
-          # Wave 2: Kafka Cluster
+          # Kafka Cluster
           - name: kafka-cluster
-            namespace: eventing
             path: environments/production
             file: kafka-cluster.yaml
             syncWave: "2"
 
-          # Wave 3: Knative Eventing
-          - name: knative-eventing-cr
-            namespace: knative-eventing
+          # Knative Eventing CR
+          - name: knative-eventing
             path: environments/production
             file: knative-eventing-cr.yaml
             syncWave: "3"
 
+          # Kafka Broker Config
           - name: kafka-broker-config
-            namespace: knative-eventing
             path: environments/production
             file: kafka-broker-config.yaml
             syncWave: "3"
 
-          # Wave 5: Default Broker
-          - name: default-kafka-broker
-            namespace: knative-eventing
+          # Kafka Broker Integration
+          - name: kafka-broker
             path: environments/production
             file: kafka-broker-integration.yaml
             syncWave: "5"
 
-          # Wave 6: Network Policies
+          # Network Policies
           - name: network-policies
-            namespace: eventing
             path: environments/production
             file: network-policies.yaml
             syncWave: "6"
@@ -86,17 +74,15 @@ spec:
 
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{.namespace}}'
+        namespace: eventing
 
       syncPolicy:
         automated:
           prune: true
           selfHeal: true
-          allowEmpty: false
         syncOptions:
           - CreateNamespace=true
           - ServerSideApply=true
-          - ApplyOutOfSyncOnly=true
         retry:
           limit: 5
           backoff:
@@ -116,7 +102,7 @@ spec:
             - /spec/replicas
 
 ---
-# Separate Application for Strimzi Operator (Helm chart)
+# Separate Application for Strimzi Operator (external URL)
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -128,22 +114,16 @@ metadata:
     app.kubernetes.io/part-of: event-driven-platform
   annotations:
     argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-options: Replace=true
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: eventing
 
-  sources:
-    - repoURL: oci://quay.io/strimzi-helm
-      chart: strimzi-kafka-operator
-      targetRevision: "0.48.0"
-      helm:
-        releaseName: strimzi-operator
-        valueFiles:
-          - $values/environments/production/strimzi-values.yaml
-    - repoURL: 'https://github.com/itufan/gitops-eventing.git'
-      targetRevision: main
-      ref: values
+  source:
+    repoURL: 'https://github.com/strimzi/strimzi-kafka-operator'
+    targetRevision: '0.44.0'
+    path: install/cluster-operator
 
   destination:
     server: https://kubernetes.default.svc
@@ -155,7 +135,7 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-      - ServerSideApply=true
+      - Replace=true
     retry:
       limit: 5
       backoff:
@@ -176,6 +156,7 @@ metadata:
     app.kubernetes.io/part-of: event-driven-platform
   annotations:
     argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-options: Replace=true
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -183,8 +164,8 @@ spec:
 
   source:
     repoURL: 'https://github.com/knative/operator'
-    targetRevision: knative-v1.19.4
-    path: config/
+    targetRevision: 'knative-v1.15.2'
+    path: config
 
   destination:
     server: https://kubernetes.default.svc
@@ -196,7 +177,7 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-      - ServerSideApply=true
+      - Replace=true
     retry:
       limit: 5
       backoff:
@@ -205,7 +186,7 @@ spec:
         maxDuration: 5m
 
 ---
-# Separate Application for Kafka Broker Controller (external URL)
+# Separate Application for Kafka Broker Controller
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -224,7 +205,7 @@ spec:
 
   source:
     repoURL: 'https://github.com/knative-extensions/eventing-kafka-broker'
-    targetRevision: knative-v1.19.7
+    targetRevision: 'knative-v1.15.0'
     path: config/source/multi
 
   destination:
@@ -237,7 +218,6 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-      - ServerSideApply=true
     retry:
       limit: 5
       backoff:

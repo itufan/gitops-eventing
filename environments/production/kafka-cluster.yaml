@@ -15,7 +15,7 @@ metadata:
 spec:
   # Kafka configuration
   kafka:
-    version: 3.9.0
+    version: 3.8.0
     replicas: 3
 
     # Listeners - cluster-internal only, no TLS

@@ -18,8 +18,7 @@ spec:
   # Source repositories
   sourceRepos:
     - 'https://github.com/itufan/gitops-eventing.git'
-    - 'https://quay.io/strimzi-helm/*'
-    - 'oci://quay.io/strimzi-helm/*'
+    - 'https://github.com/strimzi/strimzi-kafka-operator'
     - 'https://github.com/knative/operator'
     - 'https://github.com/knative-extensions/eventing-kafka-broker'
 
