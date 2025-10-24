@@ -1,0 +1,81 @@
+---
+# Kafka Broker Configuration for Knative Eventing with Bitnami Kafka
+# ConfigMap with Kafka connection details
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-broker-config
+  namespace: knative-eventing
+  labels:
+    app.kubernetes.io/name: kafka-broker-config
+    app.kubernetes.io/component: eventing
+    app.kubernetes.io/part-of: event-driven-platform
+data:
+  # Bitnami Kafka service endpoints
+  # Service name format: <release-name>-kafka.<namespace>.svc.cluster.local:9092
+  bootstrap.servers: "eventing-kafka-bitnami-controller-headless.kafka.svc.cluster.local:9092"
+
+  # Topic configuration
+  default.topic.partitions: "3"
+  default.topic.replication.factor: "3"
+
+  # Consumer configuration
+  # Use "earliest" to ensure no messages are lost
+  auto.offset.reset: "earliest"
+
+  # Producer configuration
+  # Ensure at-least-once delivery
+  acks: "all"
+  enable.idempotence: "true"
+
+  # Retry and timeout settings
+  delivery.timeout.ms: "120000"
+  request.timeout.ms: "30000"
+  retry.backoff.ms: "100"
+
+  # Compression for better throughput
+  compression.type: "snappy"
+
+  # Batch settings for performance
+  linger.ms: "10"
+  batch.size: "16384"
+
+---
+# Network Policy for Kafka Broker to Kafka communication
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kafka-broker-to-kafka
+  namespace: knative-eventing
+  labels:
+    app.kubernetes.io/name: kafka-broker-netpol
+    app.kubernetes.io/component: eventing
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: kafka-broker-receiver
+  policyTypes:
+    - Egress
+  egress:
+    # Allow egress to Kafka
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              app.kubernetes.io/name: kafka
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kafka
+      ports:
+        - protocol: TCP
+          port: 9092
+    # Allow DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+        - podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53

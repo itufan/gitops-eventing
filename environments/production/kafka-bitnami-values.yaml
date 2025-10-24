@@ -1,0 +1,235 @@
+---
+# Bitnami Kafka Helm Chart Values for Production
+# 3-broker cluster with KRaft mode, Falkenstein node affinity
+# Cluster-internal only, no TLS
+
+## Global Settings
+global:
+  storageClass: "longhorn"
+
+## KRaft Mode Configuration (no ZooKeeper)
+kraft:
+  enabled: true
+  # Auto-generate cluster ID if not specified
+  clusterId: ""
+
+## Controller Configuration (KRaft Controllers)
+controller:
+  # 3 controllers for high availability
+  replicaCount: 3
+
+  # Resource configuration
+  resourcesPreset: "small"
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+
+  # Persistence - 10GB per controller
+  persistence:
+    enabled: true
+    storageClass: "longhorn"
+    size: 10Gi
+    accessModes:
+      - ReadWriteOnce
+
+  # Log persistence
+  logPersistence:
+    enabled: true
+    storageClass: "longhorn"
+    size: 5Gi
+    accessModes:
+      - ReadWriteOnce
+
+  # Node Affinity - Prefer Falkenstein workers without gitops-observability
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+              - key: location
+                operator: In
+                values:
+                  - falkenstein
+              - key: workload
+                operator: NotIn
+                values:
+                  - gitops-observability
+        - weight: 50
+          preference:
+            matchExpressions:
+              - key: location
+                operator: In
+                values:
+                  - falkenstein
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: kafka
+                app.kubernetes.io/component: controller
+            topologyKey: kubernetes.io/hostname
+
+## Broker Configuration
+# In KRaft mode, controllers also act as brokers
+# Set broker.replicaCount to 0 to use combined mode
+broker:
+  replicaCount: 0
+
+## Listener Configuration - Cluster Internal Only, No TLS
+listeners:
+  client:
+    name: CLIENT
+    containerPort: 9092
+    protocol: PLAINTEXT
+    sslClientAuth: ""
+  controller:
+    name: CONTROLLER
+    containerPort: 9093
+    protocol: PLAINTEXT
+  interbroker:
+    name: INTERNAL
+    containerPort: 9094
+    protocol: PLAINTEXT
+  external:
+    containerPort: 9095
+    protocol: PLAINTEXT
+
+# Disable external access
+externalAccess:
+  enabled: false
+
+## Service Configuration
+service:
+  type: ClusterIP
+  ports:
+    client: 9092
+    controller: 9093
+    interbroker: 9094
+    external: 9095
+
+## Kafka Configuration
+# High availability settings
+defaultReplicationFactor: 3
+offsetsTopicReplicationFactor: 3
+transactionStateLogReplicationFactor: 3
+transactionStateLogMinIsr: 2
+minInsyncReplicas: 2
+autoCreateTopicsEnable: true
+deleteTopicEnable: true
+
+# Log retention
+logRetentionHours: 168  # 7 days
+logRetentionBytes: -1   # No size limit
+logSegmentBytes: 1073741824  # 1GB
+
+# Performance tuning
+numNetworkThreads: 3
+numIoThreads: 8
+socketSendBufferBytes: 102400
+socketReceiveBufferBytes: 102400
+socketRequestMaxBytes: 104857600
+numPartitions: 3
+numRecoveryThreadsPerDataDir: 1
+
+## Security - Disable for cluster-internal trust
+auth:
+  clientProtocol: plaintext
+  interBrokerProtocol: plaintext
+  controllerProtocol: plaintext
+  # Disable SASL authentication for simplicity
+  sasl:
+    enabledMechanisms: ""
+  tls:
+    type: ""
+    enabled: false
+
+## Metrics and Monitoring
+metrics:
+  kafka:
+    enabled: true
+  jmx:
+    enabled: true
+  serviceMonitor:
+    enabled: true
+    namespace: observability
+    interval: 30s
+    scrapeTimeout: 10s
+    labels:
+      prometheus: kube-prometheus
+
+## Health Checks
+livenessProbe:
+  enabled: true
+  initialDelaySeconds: 120
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+  successThreshold: 1
+
+readinessProbe:
+  enabled: true
+  initialDelaySeconds: 60
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+  successThreshold: 1
+
+## Volume Permissions
+volumePermissions:
+  enabled: true
+
+## Pod Security Context
+podSecurityContext:
+  enabled: true
+  fsGroup: 1001
+  runAsUser: 1001
+  runAsNonRoot: true
+
+containerSecurityContext:
+  enabled: true
+  runAsUser: 1001
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  seccompProfile:
+    type: RuntimeDefault
+
+## Network Policies
+networkPolicy:
+  enabled: true
+  allowExternal: false
+  allowExternalEgress: true
+  extraIngress:
+    - ports:
+        - port: 9092
+        - port: 9093
+        - port: 9094
+      from:
+        - namespaceSelector:
+            matchLabels: {}
+  extraEgress: []
+
+## Extra Configuration
+# Additional Kafka configuration
+extraConfig: |
+  # CloudEvents compatibility
+  compression.type=snappy
+  # Allow large messages
+  message.max.bytes=10485760
+  replica.fetch.max.bytes=10485760
+  # Improve throughput
+  num.replica.fetchers=4
+  # Faster leader election
+  unclean.leader.election.enable=false
+  # Better durability
+  min.insync.replicas=2
